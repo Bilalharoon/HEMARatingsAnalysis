@@ -107,44 +107,59 @@ class HEMARatingsScraper:
         print(f"Found {len(fighters)} fighters in this set.")
         return fighters
 
-    def get_fighter_details(self, fighter_id):
+    def get_match_history(self, fighter_id):
         """
         Fetches detailed stats for a fighter.
         """
         url = f"{self.BASE_URL}/fighters/details/{fighter_id}/"
-        # print(f"Fetching details for fighter {fighter_id}...")
+        print(f"Fetching details for fighter {fighter_id}...")
         response = self.session.get(url)
         if response.status_code != 200:
             return {}
-            
+        
         soup = BeautifulSoup(response.content, 'html.parser')
-
-        tournaments = soup.find('div', class_='rating_history')
-        match_histories = tournaments.find('table')
-        tournament_histories = []
-        for match_history in match_histories:
-            for row in match_history.find_all('tr'):
-                cols = row.find_all('td')
-                tournament_histories.append({
-                    'division': cols[0].text.strip(),
-                    'stage': cols[1].text.strip(),
-                    'opponent': cols[2].text.strip(),
-                    'outcome': cols[3].text.strip(),
-                    'opponent_rating': cols[4].text.strip(),
-                    'win_chance': cols[5].text.strip()
-                })
-           
-            
+        try:
+            longsword_tournament_history = soup.find('div', id='accordion_results_0.')
+            if not longsword_tournament_history:
+                return []
+            tournaments = longsword_tournament_history.find_all('div', id=re.compile(r'accordion_tournament_\d+_\d+\.'))
+            tournament_histories = []
+            for t in tournaments:
+                tournament_name = t.find('h4', class_='panel-title').find('span')
+                tournament_name = tournament_name.text.strip()
+                tournament_date, tournament_name = tournament_name.split('-')[0], tournament_name.split('-')[1]
+                table = t.find('table')
+                if not table:
+                    return []
+                
+                rows = table.find_all('tr')
+                for row in rows:
+                    cols = row.find_all('td')
+                    if not cols:
+                        continue # Header row or empty
+                        
+                    try:
+                        tournament_histories.append({
+                        'fighter_id': fighter_id,
+                        'division': cols[0].text.strip() if cols[0].text.strip() else None,
+                        'stage': cols[1].text.strip() if cols[1].text.strip() else None,
+                        'tournament_name': tournament_name,
+                        'tournament_date': tournament_date,
+                        'opponent': cols[2].text.strip() if cols[2].text.strip() else None,
+                        'opponent_id': cols[2].find('a')['href'].split('/')[-2] if cols[2].find('a') else None,
+                        'outcome': cols[3].text.strip() if cols[3].text.strip() else None,
+                        'opponent_rating': cols[4].text.strip() if cols[4].text.strip() else None,
+                        'win_chance': cols[5].text.strip() if cols[5].text.strip() else None
+                        })
+                    except (IndexError, AttributeError) as row_err:
+                        print(f"Skipping malformed row: {row_err}")
+                    continue
+            return tournament_histories
+        except Exception as e:
+            print(f"Error parsing match history: {e}")
+            tournament_histories = [] 
+        return tournament_histories
         
-        details = {
-            'id': fighter_id,
-            'name': soup.find('h2').text.strip() if soup.find('h2') else "Unknown"
-        }
-        
-        # Example: Extract total fights or other stats if easily available
-        # Based on research, "Match results" sections exist.
-        
-        return details
 
     def save_to_csv(self, data, filename):
         if not data:
@@ -160,18 +175,29 @@ class HEMARatingsScraper:
 
 if __name__ == "__main__":
     scraper = HEMARatingsScraper()
-    sets = scraper.get_rating_sets()
+    fighter_ids = []
+    with open('rankings_1.csv', 'r') as f:
+        reader = csv.DictReader(f)
+        rankings = list(reader)
+        for fighter in rankings:
+            fighter_ids.append(fighter['id'])
     
-    if sets:
-        # Example: Scrape the first set (usually Longsword)
-        first_set = sets[0]
-        print(f"\nScraping {first_set['name']}...")
-        rankings = scraper.get_rankings(first_set['id'])
+    aggregate_tournament_histories = []
+    for fighter_id in fighter_ids:
+        aggregate_tournament_histories.extend(scraper.get_match_history(fighter_id))
+    scraper.save_to_csv(aggregate_tournament_histories, "tournament_histories.csv")
+    # sets = scraper.get_rating_sets()
+    
+    # if sets:
+    #     # Example: Scrape the first set (usually Longsword)
+    #     first_set = sets[0]
+    #     print(f"\nScraping {first_set['name']}...")
+    #     rankings = scraper.get_rankings(first_set['id'])
         
-        if rankings:
-            scraper.save_to_csv(rankings, f"rankings_{first_set['id']}.csv")
+    # if rankings:
+    #     scraper.save_to_csv(rankings, f"rankings_{first_set['id']}.csv")
             
             # Example: Fetch details for top 3 fighters
             # for fighter in rankings[:3]:
-            #     details = scraper.get_fighter_details(fighter['id'])
+            #     details = scraper.get_match_history(fighter['id'])
             #     print(f"Details for {fighter['name']}: {details}")
