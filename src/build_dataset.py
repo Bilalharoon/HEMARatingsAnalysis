@@ -44,17 +44,16 @@ def build_dataset():
             if not previous_ratings.empty:
                 current_date = ratings['tournament_date'].iloc[-1]
                 current_date = (current_date - timedelta(days=1)).replace(day=1)
-                print(f'Reconstructing state for fighter {fid}...')
                 rating = previous_ratings['rating'].iloc[-1]
                 if fid not in fighter_states: 
                     fighter_states[fid] = FighterState(
                         fid,
                         float(rating),
-                        match['tournament_date'],
+                        match_date,
                     )
                 else:
                     fighter_states[fid].rating = float(rating)
-                    fighter_states[fid].tournament_date = match['tournament_date']
+                    fighter_states[fid].tournament_date = match_date
                     fighter_states[fid].record_match(match['outcome'] == 'WIN' if fid == fighter_id else match['outcome'] != 'WIN', match_date)
             
             if fighter_id in fighter_states and opponent_id in fighter_states:

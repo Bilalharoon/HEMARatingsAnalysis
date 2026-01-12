@@ -17,8 +17,9 @@ class HEMARatingsScraper:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Chrome/122.0.6165.162"
         })
+        self._sleep_time = 1
 
     def get_rating_sets(self):
         """
@@ -122,8 +123,13 @@ class HEMARatingsScraper:
         print(f"Fetching details for fighter {fighter_id}...")
         response = self.session.get(url)
         if response.status_code != 200:
-            return {}
-        
+            if response.status_code == 429:
+                print(f"Rate limited for fighter {fighter_id}. Retrying in {self._sleep_time} seconds...")
+                time.sleep(self._sleep_time)
+                self._sleep_time *= 2
+                return self.get_match_history(fighter_id)
+            else:
+                raise Exception(f"Failed to fetch details for fighter {fighter_id}. Status code: {response.status_code}")
         soup = BeautifulSoup(response.content, 'html.parser')
         try:
             longsword_tournament_history = soup.find('div', id='accordion_results_0.')
@@ -172,12 +178,20 @@ class HEMARatingsScraper:
         url = f"{self.BASE_URL}/fighters/details/{fighter_id}/"
         response = self.session.get(url)
         if response.status_code != 200:
+            if response.status_code == 429:
+                #cumulative sleep time
+                time.sleep(self._sleep_time)
+                self._sleep_time *= 2
+                print(f"Rate limited fetching ratings history for fighter {fighter_id}. Retrying after {self._sleep_time} seconds.")
+                return self.get_ratings_history(fighter_id)
+            print(f"Error fetching ratings history for fighter {fighter_id}: {response.status_code}")
             return []
-        
+        self._sleep_time = 1 
         soup = BeautifulSoup(response.content, 'html.parser')
         print('getting ratings history for fighter', fighter_id)     
         longsword_ratings_history_data = soup.find_all('div', class_='rating-history-data')[0]
         if not longsword_ratings_history_data:
+            print(f"Error fetching ratings history for fighter {fighter_id}: No ratings history found")
             return []
         for rating_history_element in longsword_ratings_history_data.find_all('div', class_='rating-history-data-element'):
             try:
@@ -231,6 +245,7 @@ if __name__ == "__main__":
     aggregate_ratings_history = []
     for fighter_id in fighter_ids:
         # aggregate_tournament_histories.extend(scraper.get_match_history(fighter_id))
+        # don't get rate limited by the server
         aggregate_ratings_history.extend(scraper.get_ratings_history(fighter_id))
     # scraper.save_to_csv(aggregate_tournament_histories, "../data/raw/tournament_histories.csv")
     scraper.save_to_csv(aggregate_ratings_history, RATINGS_HISTORY_FILE)
