@@ -1,6 +1,6 @@
 import pandas as pd
 from src.fighter_state import FighterState
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -34,39 +34,44 @@ def build_dataset():
     ratings = ratings.sort_values(by='tournament_date').reset_index(drop=True)
 
     for _, match in matches.iterrows():
-        fighter_id = int(match['fighter_id'])
-        opponent_id = int(match['opponent_id'])
+        fighter_id = int(match['fighter_id']) if not pd.isna(match['fighter_id']) else None
+        opponent_id = int(match['opponent_id']) if not pd.isna(match['opponent_id']) else None
         match_date = match['tournament_date']
 
 
         for fid in (fighter_id, opponent_id):
-            rating = ratings[(ratings['fighter_id'] == fid) & (ratings['tournament_date'] < match_date)]['rating'].iloc[-1]
-            if fid not in fighter_states: 
-                print(ratings[ratings['tournament_date'] < match_date])
-                fighter_states[fid] = FighterState(
-                    fid,
-                    float(rating) if not pd.isna(rating) else None,
-                    match['tournament_date'],
-                )
-            else:
-                fighter_states[fid].rating = float(ratings[(ratings['fighter_id'] == fid) & (ratings['tournament_date'] < match_date)]['rating'].iloc[-1])
-                fighter_states[fid].tournament_date = match['tournament_date']
-                fighter_states[fid].record_match(match['outcome'] == 'WON' if fid == fighter_id else match['outcome'] != 'WON', match_date)
-        
-        a = fighter_states[fighter_id]
-        b = fighter_states[opponent_id]
-        
-        rows.append({
-            'fighter_id': a.fighter_id,
-            'opponent_id': b.fighter_id,
-            'match_date': match_date,
-            'ratings_diff': a.rating - b.rating,
-            'experience_diff': a.matches_fought - b.matches_fought,
-            'days_since_last_fought_diff': (a.days_since_last_fight(match_date) if a.days_since_last_fight(match_date) is not None else 999) - 
-            (b.days_since_last_fight(match_date) if b.days_since_last_fight(match_date) is not None else 999),
-            'division': match['division'],
-            'stage': match['stage']
-        })
+            previous_ratings = ratings[(ratings['fighter_id'] == fid) & (ratings['tournament_date'] < match_date)]
+            if not previous_ratings.empty:
+                current_date = ratings['tournament_date'].iloc[-1]
+                current_date = (current_date - timedelta(days=1)).replace(day=1)
+                print(f'Reconstructing state for fighter {fid}...')
+                rating = previous_ratings['rating'].iloc[-1]
+                if fid not in fighter_states: 
+                    fighter_states[fid] = FighterState(
+                        fid,
+                        float(rating),
+                        match['tournament_date'],
+                    )
+                else:
+                    fighter_states[fid].rating = float(rating)
+                    fighter_states[fid].tournament_date = match['tournament_date']
+                    fighter_states[fid].record_match(match['outcome'] == 'WIN' if fid == fighter_id else match['outcome'] != 'WIN', match_date)
+            
+            if fighter_id in fighter_states and opponent_id in fighter_states:
+                a = fighter_states[fighter_id]
+                b = fighter_states[opponent_id]
+
+                rows.append({
+                    'fighter_id': a.fighter_id,
+                    'opponent_id': b.fighter_id,
+                    'match_date': match_date,
+                    'ratings_diff': a.rating - b.rating,
+                    'experience_diff': a.matches_fought - b.matches_fought,
+                    'days_since_last_fought_diff': (a.days_since_last_fight(current_date) - b.days_since_last_fight(current_date)).days if a.days_since_last_fight(current_date) is not None and b.days_since_last_fight(current_date) is not None else 999,
+                    'division': match['division'],
+                    'stage': match['stage'],
+                    'label': 1 if match['outcome'] == 'WIN' else 0
+                })
 
     
     

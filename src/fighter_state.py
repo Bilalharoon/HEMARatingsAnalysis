@@ -17,7 +17,7 @@ class FighterState:
     def days_since_last_fight(self, current_date: date) -> Optional[int]:
         if self.last_match_date is None:
             return None
-        return (date.fromisoformat(self.tournament_date) - self.last_match_date).days
+        return current_date - self.last_match_date
 
     def record_match(self, won: bool, match_date: date) -> None:
         self.matches_fought += 1
