@@ -16,7 +16,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.calibration import calibration_curve
-from sklearn.metrics import brier_score_loss, log_loss
+from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 import lightgbm as lgb
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -94,6 +94,13 @@ def analyze_calibration(y_true, y_pred_prob, model_name, n_bins=10):
     brier = brier_score_loss(y_true_valid, y_pred_prob_valid)
     logloss = log_loss(y_true_valid, y_pred_prob_valid)
     
+    # Calculate ROC-AUC
+    try:
+        roc_auc = roc_auc_score(y_true_valid, y_pred_prob_valid)
+    except ValueError:
+        # Handle case where all labels are the same
+        roc_auc = np.nan
+    
     results = {
         'model_name': model_name,
         'metrics': {
@@ -101,6 +108,7 @@ def analyze_calibration(y_true, y_pred_prob, model_name, n_bins=10):
             'mce': float(mce),
             'brier_score': float(brier),
             'log_loss': float(logloss),
+            'roc_auc': float(roc_auc) if not np.isnan(roc_auc) else None,
             'n_samples': len(y_true_valid)
         },
         'calibration_curve': {
@@ -319,7 +327,7 @@ def main():
     print("CALIBRATION RESULTS")
     print("=" * 80)
     
-    # Sort by ECE (lower is better)
+    # Sort by ECE (lower is better) for calibration, but we'll also show ROC-AUC separately
     all_results_sorted = sorted(all_results, key=lambda x: x['metrics']['ece'])
     
     for i, result in enumerate(all_results_sorted):
@@ -332,14 +340,49 @@ def main():
         print(f"   Maximum Calibration Error (MCE):   {metrics['mce']:.6f}")
         print(f"   Brier Score:                       {metrics['brier_score']:.6f}")
         print(f"   Log Loss:                          {metrics['log_loss']:.6f}")
+        roc_auc_val = metrics.get('roc_auc', None)
+        if roc_auc_val is not None:
+            print(f"   ROC-AUC Score:                     {roc_auc_val:.6f}")
+        else:
+            print(f"   ROC-AUC Score:                     N/A")
         print(f"   Samples:                           {metrics['n_samples']}")
     
-    # Determine best model
+    # Determine best model for calibration
     if all_results_sorted:
         best_model = all_results_sorted[0]
         print(f"\n{'='*80}")
         print(f"BEST MODEL (Lowest ECE): {best_model['model_name']}")
         print(f"ECE: {best_model['metrics']['ece']:.6f}")
+        print(f"{'='*80}")
+    
+    # Print ROC-AUC comparison separately
+    print("\n" + "=" * 80)
+    print("ROC-AUC COMPARISON (Discrimination)")
+    print("=" * 80)
+    print("(Higher is better - measures ability to distinguish wins from losses)")
+    
+    # Sort by ROC-AUC (higher is better)
+    roc_auc_results = sorted(
+        [r for r in all_results if r['metrics'].get('roc_auc') is not None], 
+        key=lambda x: x['metrics'].get('roc_auc', 0), 
+        reverse=True
+    )
+    
+    for i, result in enumerate(roc_auc_results):
+        metrics = result['metrics']
+        model_name = result['model_name']
+        rank = i + 1
+        roc_auc_val = metrics.get('roc_auc', None)
+        
+        if roc_auc_val is not None:
+            print(f"{rank}. {model_name}: ROC-AUC = {roc_auc_val:.6f}")
+    
+    # Determine best model for discrimination
+    if roc_auc_results:
+        best_roc_model = roc_auc_results[0]
+        print(f"\n{'='*80}")
+        print(f"BEST MODEL (Highest ROC-AUC): {best_roc_model['model_name']}")
+        print(f"ROC-AUC: {best_roc_model['metrics']['roc_auc']:.6f}")
         print(f"{'='*80}")
     
     # Plot calibration curves

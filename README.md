@@ -1,5 +1,22 @@
 # Competitive Performance Prediction System (HEMA)
 
+## 🚀 Key Results
+
+• Built a leakage-safe, time-aware ML pipeline to predict competitive fencing match outcomes using only pre-match data
+
+• Logistic Regression baseline achieves **~0.79 ROC-AUC** and **~0.71 accuracy** on held-out future matches
+
+• Best calibrated model: **Logistic Regression (ECE = 0.0173)** → highly reliable probability estimates
+
+• Best discriminating model: **LightGBM (ROC-AUC = 0.8455)** → strongest at ranking winners vs losers
+
+• Both models **outperform the official website’s win probability system** in calibration and overall predictive quality
+• Feature ablation confirms **rating differential dominates prediction**, with experience and inactivity providing secondary signal
+
+
+👉 Takeaway: This project demonstrates end-to-end applied ML skills across data collection, temporal feature engineering, modeling, evaluation, and probability calibration.
+
+
 ## Overview
 
 This project builds a **pre-match win probability model** for competitive HEMA (Historical European Martial Arts) tournaments using publicly available fighter ratings and match histories.
