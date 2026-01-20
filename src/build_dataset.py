@@ -45,7 +45,10 @@ def build_dataset():
     ratings['rating'] = pd.to_numeric(ratings['rating'], errors='coerce').astype('float64')
 
     # Ensure IDs are integers for merging
+    before_drop = len(matches)
     matches = matches.dropna(subset=['fighter_id', 'opponent_id'])
+    after_drop = len(matches)
+    print(f"Dropped {before_drop - after_drop} NaN matches")
     matches['fighter_id'] = matches['fighter_id'].astype('int64')
     matches['opponent_id'] = matches['opponent_id'].astype('int64')
     ratings['fighter_id'] = ratings['fighter_id'].astype('int64')
@@ -76,7 +79,6 @@ def build_dataset():
     matches['fighter_rating'] = matches['fighter_rating'].fillna(1000.0)
     matches['opponent_rating'] = matches['opponent_rating'].fillna(1000.0) 
     matches['match_id'] = pd.util.hash_pandas_object(matches[['fighter_id', 'opponent_id', 'tournament_date']]).astype('int64')
-    print(matches.head())
     print('Building dataset...')
     fighter_states: dict[int, FighterState] = {}
     for _, match in matches.iterrows():

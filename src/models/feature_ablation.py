@@ -16,7 +16,6 @@ import lightgbm as lgb
 from pathlib import Path
 from itertools import combinations
 import json
-import train_logistic_regression from src.models.logistic_regression
 
 # Config
 BASE_DIR = Path(__file__).resolve().parent

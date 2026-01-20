@@ -1,5 +1,5 @@
 """
-Predict win probability between two fighters using Logistic Regression.
+Predict win probability between two fighters using LightGBM.
 
 Uses only the latest data (most recent ratings and match history) to compute
 features. Includes fighter names in the output.
@@ -14,9 +14,7 @@ Example:
 import pandas as pd
 import numpy as np
 from datetime import datetime, date
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import make_pipeline
+import lightgbm as lgb
 from pathlib import Path
 import sys
 
@@ -139,16 +137,26 @@ def _build_latest_features(fid1: int, fid2: int, as_of: date, ratings: pd.DataFr
     }, {"rating": r1, "matches": n1, "wins": w1}, {"rating": r2, "matches": n2, "wins": w2}
 
 
-def _train_lr_model() -> "Pipeline":
-    """Train logistic regression on pre_match_features (all data for model)."""
+def _train_lgb_model():
+    """Train LightGBM on pre_match_features (all data for model)."""
     df = pd.read_csv(FEATURES_FILE)
     df["match_date"] = pd.to_datetime(df["match_date"])
     df = df.sort_values("match_date").reset_index(drop=True)
 
     X = df[FEATURE_COLS]
     y = df["label"]
-    model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))
-    model.fit(X, y)
+
+    lgb_train = lgb.Dataset(X, label=y)
+    params = {
+        "objective": "binary",
+        "metric": "binary_logloss",
+        "boosting": "gbdt",
+        "num_leaves": 31,
+        "learning_rate": 0.05,
+        "feature_fraction": 0.9,
+        "verbose": -1,
+    }
+    model = lgb.train(params, lgb_train, num_boost_round=300)
     return model
 
 
@@ -191,9 +199,9 @@ def predict_win_probability(fighter_id_1: int, fighter_id_2: int):
     features, s1, s2 = _build_latest_features(fighter_id_1, fighter_id_2, as_of, ratings, matches)
 
     # Train model and predict
-    model = _train_lr_model()
+    model = _train_lgb_model()
     X = pd.DataFrame([features])[FEATURE_COLS]
-    win_prob = float(model.predict_proba(X)[0, 1])
+    win_prob = float(model.predict(X)[0])
 
     # Names
     id_to_name = _load_id_to_name()
@@ -231,15 +239,15 @@ def main():
         sys.exit(1)
 
     print("\n" + "=" * 70)
-    print("WIN PROBABILITY (logistic regression, latest data only)")
+    print("WIN PROBABILITY (LightGBM, latest data only)")
     print("=" * 70)
     print(f"\n{r['fighter_1_name']} (ID {r['fighter_1_id']})  vs  {r['fighter_2_name']} (ID {r['fighter_2_id']})")
-    print(f"Data as of: {r['as_of_date']}")
+    print(f"Data as of: {datetime.now().strftime('%Y-%m-%d')}")
     print(f"\nWin probability for {r['fighter_1_name']}: {r['win_probability']:.2%}")
     print(f"Win probability for {r['fighter_2_name']}: {1 - r['win_probability']:.2%}")
     print("\n" + "-" * 70)
-    print(f"{r['fighter_1_name']}:  rating {r['fighter_1_stats']['rating']:.1f},  {r['fighter_1_stats']['matches']} matches,  {r['fighter_1_stats']['wins']} wins")
-    print(f"{r['fighter_2_name']}:  rating {r['fighter_2_stats']['rating']:.1f},  {r['fighter_2_stats']['matches']} matches,  {r['fighter_2_stats']['wins']} wins")
+    print(f"{r['fighter_1_name']}:  rating {r['fighter_1_stats']['rating']:.1f},  {r['fighter_1_stats']['matches'] //2} matches,  {r['fighter_1_stats']['wins'] //2} wins")
+    print(f"{r['fighter_2_name']}:  rating {r['fighter_2_stats']['rating']:.1f},  {r['fighter_2_stats']['matches'] //2} matches,  {r['fighter_2_stats']['wins'] //2} wins")
     print("-" * 70)
     print("Features: ratings_diff={:.2f}, experience_diff={}, fighter_first_match={}, opponent_first_match={}, days_since_last_fought_diff={}, fighter_days_since_last_fought={}, opponent_days_since_last_fought={}".format(
         r["features"]["ratings_diff"],
